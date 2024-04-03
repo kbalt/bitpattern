@@ -78,61 +78,41 @@ pub fn bitpattern(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 
 macro_rules! gen_code {
-    ($x:ty) => {
-        paste::item! {
-            fn [<gen_code_$x>](pattern: String, expr: TokenStream) -> proc_macro::TokenStream {
-                let mut bit_mask: $x = 0;
-                let mut bit_pattern: $x = 0;
+    ($name:ident, $x:ty) => {
+        fn $name(pattern: String, expr: TokenStream) -> proc_macro::TokenStream {
+            let mut bit_mask: $x = 0;
+            let mut bit_pattern: $x = 0;
 
-                let mut args_pos = Vec::new();
-                let mut args_mask = Vec::new();
+            let mut args_pos = Vec::new();
+            let mut args_mask = Vec::new();
 
-                let mut prev = None;
-                let mut count = 0;
+            let mut prev = None;
+            let mut count = 0;
 
-                for (i, bit) in pattern.chars().enumerate() {
-                    bit_mask <<= 1;
-                    bit_pattern <<= 1;
-                    match bit {
-                        '0' => {
-                            bit_mask |= 1;
-                            bit_pattern |= 0;
-                        }
-                        '1' => {
-                            bit_mask |= 1;
-                            bit_pattern |= 1;
-                        }
-                        '_' => {
-                            bit_mask |= 0;
-                            bit_pattern |= 0;
-                        }
-                        _ => {
-                            bit_mask |= 0;
-                            bit_pattern |= 0;
-                        }
+            for (i, bit) in pattern.chars().enumerate() {
+                bit_mask <<= 1;
+                bit_pattern <<= 1;
+                match bit {
+                    '0' => {
+                        bit_mask |= 1;
+                        bit_pattern |= 0;
                     }
-                    if let Some(x) = prev {
-                        if x != bit && x != '0' && x != '1' && x != '?' {
-                            let pos = (pattern.len() - i) as $x;
-                            let mut mask: $x = 0;
-                            for _ in 0..count {
-                                mask <<= 1;
-                                mask |= 1;
-                            }
-                            args_pos.push(pos);
-                            args_mask.push(mask);
-
-                            count = 0;
-                        } else if x != bit {
-                            count = 0;
-                        }
+                    '1' => {
+                        bit_mask |= 1;
+                        bit_pattern |= 1;
                     }
-                    count += 1;
-                    prev = Some(bit);
+                    '_' => {
+                        bit_mask |= 0;
+                        bit_pattern |= 0;
+                    }
+                    _ => {
+                        bit_mask |= 0;
+                        bit_pattern |= 0;
+                    }
                 }
                 if let Some(x) = prev {
-                    if x != '0' && x != '1' && x != '?' {
-                        let pos = 0 as $x;
+                    if x != bit && x != '0' && x != '1' && x != '?' {
+                        let pos = (pattern.len() - i) as $x;
                         let mut mask: $x = 0;
                         for _ in 0..count {
                             mask <<= 1;
@@ -140,32 +120,50 @@ macro_rules! gen_code {
                         }
                         args_pos.push(pos);
                         args_mask.push(mask);
+
+                        count = 0;
+                    } else if x != bit {
+                        count = 0;
                     }
                 }
-
-                let gen = quote! {
-                    {
-                        let value = (#expr) as $x;
-                        if value & #bit_mask == #bit_pattern {
-                            Some((
-                                    #(
-                                        (value >> #args_pos) & #args_mask
-                                    ),*
-                                ))
-                        } else {
-                            None
-                        }
-                    }
-                };
-
-                gen.into()
+                count += 1;
+                prev = Some(bit);
             }
+            if let Some(x) = prev {
+                if x != '0' && x != '1' && x != '?' {
+                    let pos = 0 as $x;
+                    let mut mask: $x = 0;
+                    for _ in 0..count {
+                        mask <<= 1;
+                        mask |= 1;
+                    }
+                    args_pos.push(pos);
+                    args_mask.push(mask);
+                }
+            }
+
+            let gen = quote! {
+                {
+                    let value = (#expr) as $x;
+                    if value & #bit_mask == #bit_pattern {
+                        Some((
+                                #(
+                                    (value >> #args_pos) & #args_mask
+                                ),*
+                            ))
+                    } else {
+                        None
+                    }
+                }
+            };
+
+            gen.into()
         }
     };
 }
 
-gen_code!(u8);
-gen_code!(u16);
-gen_code!(u32);
-gen_code!(u64);
-gen_code!(u128);
+gen_code!(gen_code_u8, u8);
+gen_code!(gen_code_u16, u16);
+gen_code!(gen_code_u32, u32);
+gen_code!(gen_code_u64, u64);
+gen_code!(gen_code_u128, u128);
